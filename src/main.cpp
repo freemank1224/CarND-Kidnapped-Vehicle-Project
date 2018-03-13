@@ -31,7 +31,7 @@ int main()
 
   //Set up parameters here
   double delta_t = 0.1; // Time elapsed between measurements [sec]
-  double sensor_range = 50; // Sensor range [m]
+  double sensor_range = 20; // Sensor range [m]
 
   double sigma_pos [3] = {0.3, 0.3, 0.01}; // GPS measurement uncertainty [x [m], y [m], theta [rad]]
   double sigma_landmark [2] = {0.3, 0.3}; // Landmark measurement uncertainty [x [m], y [m]]
@@ -127,6 +127,7 @@ int main()
 			}
 			weight_sum += particles[i].weight;
 		  }
+		  //cout << "++++++++" << random.gauss(0.0,1) << endl;
 		  cout << "highest w " << highest_weight << endl;
 		  cout << "average w " << weight_sum/num_particles << endl;
 

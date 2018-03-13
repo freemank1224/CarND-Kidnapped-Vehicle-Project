@@ -28,7 +28,7 @@ struct Particle {
 class ParticleFilter {
 	
 	// Number of particles to draw
-	int num_particles; 
+	int num_particles;
 	
 	
 	
@@ -43,9 +43,12 @@ public:
 	// Set of current particles
 	std::vector<Particle> particles;
 
+	// For resample usage
+	std::vector<Particle> particles_re;
+
 	// Constructor
 	// @param num_particles Number of particles
-	ParticleFilter() : num_particles(0), is_initialized(false) {}
+	ParticleFilter() : num_particles(100), is_initialized(false), particles(100), particles_re(100), weights(100) {}
 
 	// Destructor
 	~ParticleFilter() {}

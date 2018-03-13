@@ -24,7 +24,33 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	//   x, y, theta and their uncertainties from GPS) and all weights to 1. 
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
+	default_random_engine gen;
 
+	//num_particles = 1000;  DEFINED in particle_filter.h
+
+	double std_x, std_y, std_theta;
+	std_x = std[0];
+	std_y = std[1];
+	std_theta = std[2];
+
+
+	normal_distribution<double> dist_x(x, std_x);
+	normal_distribution<double> dist_y(y, std_y);
+	normal_distribution<double> dist_theta(theta, std_theta);
+
+	for(int i=0; i<num_particles; i++){
+
+
+
+		particles[i].id = i;
+		particles[i].x = dist_x(gen);
+		particles[i].y = dist_y(gen);
+		particles[i].theta = dist_theta(gen);
+
+		particles[i].weight = 1.0;
+	}
+
+	is_initialized = true;
 }
 
 void ParticleFilter::prediction(double delta_t, double std_pos[], double velocity, double yaw_rate) {
@@ -32,6 +58,37 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	// NOTE: When adding noise you may find std::normal_distribution and std::default_random_engine useful.
 	//  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
 	//  http://www.cplusplus.com/reference/random/default_random_engine/
+	default_random_engine gen;
+
+	double std_x, std_y, std_theta;
+	std_x = std_pos[0];
+	std_y = std_pos[1];
+	std_theta = std_pos[2];
+
+	// Add noise
+	normal_distribution<double> dist_x(0, std_x);
+	normal_distribution<double> dist_y(0, std_y);
+	normal_distribution<double> dist_theta(0, std_theta);
+
+
+	if(yaw_rate != 0){
+		for(int i=0; i<num_particles ;i++){
+			particles[i].x += velocity * (sin(particles[i].theta + yaw_rate*delta_t) - sin(particles[i].theta)) / yaw_rate;
+			particles[i].y += velocity * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate*delta_t)) / yaw_rate;
+			particles[i].theta += yaw_rate * delta_t;
+
+			particles[i].x = dist_x(gen);
+			particles[i].y = dist_y(gen);
+			particles[i].theta = dist_theta(gen);
+		}	
+	}else{
+		for(int i=0; i<num_particles ;i++){
+			particles[i].x += velocity * delta_t * cos(particles[i].theta) + dist_x(gen);
+			particles[i].y += velocity * delta_t * sin(particles[i].theta) + dist_y(gen);
+			particles[i].theta += dist_theta(gen);
+		}
+
+	}
 
 }
 
@@ -55,12 +112,95 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   and the following is a good resource for the actual equation to implement (look at equation 
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
+
+
+	// Each particle see many observations and choose the closest observed landmark
+	for (int i = 0; i < num_particles; ++i)
+	{
+		
+		// Define the initial range between the adjacent observed and map landmarks
+		double min_sensor_dist = 2 * sensor_range;
+
+		double weight_temp = 1.0;
+
+		// For each observation landmark
+		for (int j = 0; j < observations.size(); ++j)
+		{
+
+			int temp_id_weight;
+
+			// Transform the observation landmarks from car observation coordinates to map coordinates
+			double x_m = particles[i].x + cos(particles[i].theta) * observations[j].x - sin(particles[i].theta) * observations[j].y;
+			double y_m = particles[i].y + sin(particles[i].theta) * observations[j].x - cos(particles[i].theta) * observations[j].y;
+
+
+			// 给定粒子与观测物的距离 Calculate the distance between observed landmark from a given particle
+			double observation_dist = dist(x_m, y_m, particles[i].x, particles[i].y);
+
+			for (int k = 0; k < map_landmarks.landmark_list.size(); ++k)
+			{
+
+				// 地图观测物与粒子的距离 For a given particle, calculate the max view distance which defined by the sensor_range variable
+				double map_mark_dist = dist(particles[i].x, particles[i].y, map_landmarks.landmark_list[k].x_f, map_landmarks.landmark_list[k].y_f);
+
+				// Within the view distance
+				if ((map_landmarks.landmark_list[k].x_f - particles[i].x < sensor_range) && (map_landmarks.landmark_list[k].y_f - particles[i].y < sensor_range))
+				{
+					// 特定观测物与地图标志的距离 Obtain the distance between map landmarks and observation landmark
+					double near_dist = dist(x_m, y_m, map_landmarks.landmark_list[k].x_f, map_landmarks.landmark_list[k].y_f);
+
+					if (near_dist < min_sensor_dist)
+					{
+						particles[i].id = k;
+						min_sensor_dist = near_dist;
+
+					}
+
+				}else{
+					
+				}
+
+				cout << "-------- Current Association ---------" << endl;
+				cout << "Particle" << i << "'s association:" << particles[i].id << endl;
+
+				// *********** Find the nearest matched one !!! ************
+				temp_id_weight = k;
+			}
+
+			
+			
+			/*weight_temp = exp(-(pow((x_m - map_landmarks.landmark_list[temp_id_weight].x_f),2)/(2*pow(std_landmark[0],2)) + pow((y_m - map_landmarks.landmark_list[temp_id_weight].y_f),2)/(2*pow(std_landmark[1],2)))) 
+								/ (2*M_PI*std_landmark[0],std_landmark[1]);	
+			*/
+
+			particles[i].weight *= 1/(2*M_PI*std_landmark[0]*std_landmark[1]) * exp(-(pow(x_m - map_landmarks.landmark_list[particles[i].id].x_f, 2) 
+                                                                                      + pow(y_m - map_landmarks.landmark_list[particles[i].id].y_f, 2))
+									/(2 * M_PI *std_landmark[0]*std_landmark[1]));
+
+		}
+
+
+		weights[i] = particles[i].weight;
+
+
+	}
+
 }
 
 void ParticleFilter::resample() {
 	// TODO: Resample particles with replacement with probability proportional to their weight. 
 	// NOTE: You may find std::discrete_distribution helpful here.
 	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
+	default_random_engine gen;
+
+	discrete_distribution<int> dist_d(weights.begin(), weights.end());
+
+	for (int i = 0; i < num_particles; ++i)
+	{
+		particles_re[i] = particles[dist_d(gen)];
+	}
+
+	particles = particles_re;
 
 }
 
