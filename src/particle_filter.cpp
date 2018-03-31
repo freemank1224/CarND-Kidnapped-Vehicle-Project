@@ -150,8 +150,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
                //compute particle weight based on multivariate Gaussian probability
                particles[i].weight *= 1/(2*M_PI*std_landmark[0]*std_landmark[1]) * exp(-(pow(x_trans - map_landmarks.landmark_list[particles[i].id].x_f, 2) 
-                                                                                      + pow(y_trans - map_landmarks.landmark_list[particles[i].id].y_f, 2))
-                                                                                        /(2 * M_PI *std_landmark[0]*std_landmark[1]));
+                                                                                      + pow(y_trans - map_landmarks.landmark_list[particles[i].id].y_f, 2)));
             }
 
             weights[i] = particles[i].weight;
