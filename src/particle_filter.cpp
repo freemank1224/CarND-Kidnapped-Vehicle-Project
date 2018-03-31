@@ -72,17 +72,17 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 
 
 	if(yaw_rate != 0){
-		for(int i=0; i<num_particles ;i++){
+		for(int i=0; i<num_particles; i++){
 			particles[i].x += velocity * (sin(particles[i].theta + yaw_rate*delta_t) - sin(particles[i].theta)) / yaw_rate;
 			particles[i].y += velocity * (cos(particles[i].theta) - cos(particles[i].theta + yaw_rate*delta_t)) / yaw_rate;
 			particles[i].theta += yaw_rate * delta_t;
 
-			particles[i].x = dist_x(gen);
-			particles[i].y = dist_y(gen);
-			particles[i].theta = dist_theta(gen);
+			particles[i].x += dist_x(gen);
+			particles[i].y += dist_y(gen);
+			particles[i].theta += dist_theta(gen);
 		}	
 	}else{
-		for(int i=0; i<num_particles ;i++){
+		for(int i=0; i<num_particles; i++){
 			particles[i].x += velocity * delta_t * cos(particles[i].theta) + dist_x(gen);
 			particles[i].y += velocity * delta_t * sin(particles[i].theta) + dist_y(gen);
 			particles[i].theta += dist_theta(gen);
@@ -114,77 +114,48 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   http://planning.cs.uiuc.edu/node99.html
 
 
-	// Each particle see many observations and choose the closest observed landmark
-	for (int i = 0; i < num_particles; ++i)
-	{
-		
-		// Define the initial range between the adjacent observed and map landmarks
-		double min_sensor_dist = 2 * sensor_range;
+	for (int i = 0; i < num_particles; i++) {
 
-		double weight_temp = 1.0;
+            particles[i].weight=1.0;
 
-		// For each observation landmark
-		for (int j = 0; j < observations.size(); ++j)
-		{
+            //For every particle loop over observations and check which landmark fits best to each observation
+            // (Afterwards the multivariate Gaussian will compute which particles have the highest probability
+            // of matching the "real" location and orientation of the vehicle based on the observations).
+            for (int j = 0; j<observations.size(); ++j) { 
 
-			int temp_id_weight;
+               //set x and y transformation for each observation to get global coordinates
+               double x_trans = particles[i].x + observations[j].x * cos(particles[i].theta) - observations[j].y * sin(particles[i].theta);
+               double y_trans = particles[i].y + observations[j].x * sin(particles[i].theta) + observations[j].y * cos(particles[i].theta);
 
-			// Transform the observation landmarks from car observation coordinates to map coordinates
-			double x_m = particles[i].x + cos(particles[i].theta) * observations[j].x - sin(particles[i].theta) * observations[j].y;
-			double y_m = particles[i].y + sin(particles[i].theta) * observations[j].x - cos(particles[i].theta) * observations[j].y;
+               //using particle.id variable to associate to (nearest) map landmark
+               particles[i].id = 0;
+               double best_dist = dist(x_trans, y_trans, map_landmarks.landmark_list[0].x_f, map_landmarks.landmark_list[0].y_f);
 
+               //search over all map landmarks to find closest/nearest to observation
+               for (int k = 1; k < map_landmarks.landmark_list.size(); ++k) {
 
-			// 给定粒子与观测物的距离 Calculate the distance between observed landmark from a given particle
-			double observation_dist = dist(x_m, y_m, particles[i].x, particles[i].y);
+                   //only consider landmarks within sensor range
+                   if (((map_landmarks.landmark_list[k].x_f - particles[i].x) < sensor_range) && ((map_landmarks.landmark_list[k].y_f - particles[i].y) < sensor_range))
+                   {
+                      double new_dist = dist(x_trans, y_trans, map_landmarks.landmark_list[k].x_f, map_landmarks.landmark_list[k].y_f);
 
-			for (int k = 0; k < map_landmarks.landmark_list.size(); ++k)
-			{
+                      if (new_dist < best_dist) 
+                      {
+                      best_dist = new_dist;
+                      //assign landmark ID corresponding to nearest landmark
+                      particles[i].id = k;
+                      }
+                   }
+               }
 
-				// 地图观测物与粒子的距离 For a given particle, calculate the max view distance which defined by the sensor_range variable
-				double map_mark_dist = dist(particles[i].x, particles[i].y, map_landmarks.landmark_list[k].x_f, map_landmarks.landmark_list[k].y_f);
+               //compute particle weight based on multivariate Gaussian probability
+               particles[i].weight *= 1/(2*M_PI*std_landmark[0]*std_landmark[1]) * exp(-(pow(x_trans - map_landmarks.landmark_list[particles[i].id].x_f, 2) 
+                                                                                      + pow(y_trans - map_landmarks.landmark_list[particles[i].id].y_f, 2))
+                                                                                        /(2 * M_PI *std_landmark[0]*std_landmark[1]));
+            }
 
-				// Within the view distance
-				if ((map_landmarks.landmark_list[k].x_f - particles[i].x < sensor_range) && (map_landmarks.landmark_list[k].y_f - particles[i].y < sensor_range))
-				{
-					// 特定观测物与地图标志的距离 Obtain the distance between map landmarks and observation landmark
-					double near_dist = dist(x_m, y_m, map_landmarks.landmark_list[k].x_f, map_landmarks.landmark_list[k].y_f);
-
-					if (near_dist < min_sensor_dist)
-					{
-						particles[i].id = k;
-						min_sensor_dist = near_dist;
-
-					}
-
-				}else{
-					
-				}
-
-				cout << "-------- Current Association ---------" << endl;
-				cout << "Particle" << i << "'s association:" << particles[i].id << endl;
-
-				// *********** Find the nearest matched one !!! ************
-				temp_id_weight = k;
-			}
-
-			
-			
-			/*weight_temp = exp(-(pow((x_m - map_landmarks.landmark_list[temp_id_weight].x_f),2)/(2*pow(std_landmark[0],2)) + pow((y_m - map_landmarks.landmark_list[temp_id_weight].y_f),2)/(2*pow(std_landmark[1],2)))) 
-								/ (2*M_PI*std_landmark[0],std_landmark[1]);	
-			*/
-
-			particles[i].weight *= 1/(2*M_PI*std_landmark[0]*std_landmark[1]) * exp(-(pow(x_m - map_landmarks.landmark_list[particles[i].id].x_f, 2) 
-                                                                                      + pow(y_m - map_landmarks.landmark_list[particles[i].id].y_f, 2))
-									/(2 * M_PI *std_landmark[0]*std_landmark[1]));
-
-		}
-
-
-		weights[i] = particles[i].weight;
-
-
-	}
-
+            weights[i] = particles[i].weight;
+        }
 }
 
 void ParticleFilter::resample() {
@@ -215,6 +186,8 @@ Particle ParticleFilter::SetAssociations(Particle& particle, const std::vector<i
     particle.associations= associations;
     particle.sense_x = sense_x;
     particle.sense_y = sense_y;
+
+    return particle;
 }
 
 string ParticleFilter::getAssociations(Particle best)
